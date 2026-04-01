@@ -37,8 +37,10 @@ class McpConfig(storage: PersistedObject, private val logging: Logging) {
         }
 
     private var _autoApproveTargets by storage.stringList("")
+    private var _allowedOriginHosts by storage.stringList("")
     private val targetsChangeListeners = CopyOnWriteArrayList<ListenerRegistration>()
     private val historyAccessChangeListeners = CopyOnWriteArrayList<ListenerRegistration>()
+    private val allowedOriginsChangeListeners = CopyOnWriteArrayList<ListenerRegistration>()
 
     var autoApproveTargets: String
         get() = _autoApproveTargets
@@ -79,6 +81,47 @@ class McpConfig(storage: PersistedObject, private val logging: Logging) {
 
     fun clearAutoApproveTargets() {
         autoApproveTargets = ""
+    }
+
+    var allowedOriginHosts: String
+        get() = _allowedOriginHosts
+        set(value) {
+            if (_allowedOriginHosts != value) {
+                _allowedOriginHosts = value
+                notifyAllowedOriginsChanged()
+            }
+        }
+
+    fun addAllowedOriginHost(host: String): Boolean {
+        val currentHosts = getAllowedOriginHostsList()
+        if (host.trim().isNotEmpty() && !currentHosts.contains(host.trim())) {
+            val newHosts = currentHosts + host.trim()
+            allowedOriginHosts = newHosts.joinToString(",")
+            return true
+        }
+        return false
+    }
+
+    fun removeAllowedOriginHost(host: String): Boolean {
+        val currentHosts = getAllowedOriginHostsList()
+        val newHosts = currentHosts.filter { it != host.trim() }
+        if (newHosts.size != currentHosts.size) {
+            allowedOriginHosts = newHosts.joinToString(",")
+            return true
+        }
+        return false
+    }
+
+    fun getAllowedOriginHostsList(): List<String> {
+        return if (_allowedOriginHosts.isBlank()) {
+            emptyList()
+        } else {
+            _allowedOriginHosts.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        }
+    }
+
+    fun clearAllowedOriginHosts() {
+        allowedOriginHosts = ""
     }
 
     fun addTargetsChangeListener(listener: () -> Unit): ListenerHandle {
@@ -125,6 +168,28 @@ class McpConfig(storage: PersistedObject, private val logging: Logging) {
         }
     }
 
+    fun addAllowedOriginsChangeListener(listener: () -> Unit): ListenerHandle {
+        val registration = ListenerRegistration(listener)
+        allowedOriginsChangeListeners.add(registration)
+        return ListenerHandle { removeAllowedOriginsChangeListener(registration) }
+    }
+
+    private fun removeAllowedOriginsChangeListener(registration: ListenerRegistration) {
+        allowedOriginsChangeListeners.remove(registration)
+    }
+
+    private fun notifyAllowedOriginsChanged() {
+        cleanupStaleListeners(allowedOriginsChangeListeners)
+        val listeners = allowedOriginsChangeListeners.mapNotNull { it.listener.get() }
+        listeners.forEach { listener ->
+            try {
+                listener()
+            } catch (e: Exception) {
+                logging.logToError("Allowed origins change listener failed: ${e.message}")
+            }
+        }
+    }
+
     private fun cleanupStaleListeners(listenerList: CopyOnWriteArrayList<ListenerRegistration>) {
         val staleListeners = listenerList.filter { it.listener.get() == null }
         listenerList.removeAll(staleListeners)
@@ -133,6 +198,7 @@ class McpConfig(storage: PersistedObject, private val logging: Logging) {
     fun cleanup() {
         targetsChangeListeners.clear()
         historyAccessChangeListeners.clear()
+        allowedOriginsChangeListeners.clear()
     }
 }
 

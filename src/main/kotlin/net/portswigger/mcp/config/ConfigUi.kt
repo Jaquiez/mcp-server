@@ -48,6 +48,7 @@ class ConfigUi(private val config: McpConfig, private val providers: List<Provid
     private lateinit var serverConfigurationPanel: ServerConfigurationPanel
     private lateinit var advancedOptionsPanel: AdvancedOptionsPanel
     private lateinit var autoApproveTargetsPanel: AutoApproveTargetsPanel
+    private lateinit var allowedOriginsPanel: AllowedOriginsPanel
     private lateinit var installationPanel: InstallationPanel
 
     private var toggleListener: ((Boolean) -> Unit)? = null
@@ -73,6 +74,10 @@ class ConfigUi(private val config: McpConfig, private val providers: List<Provid
 
         autoApproveTargetsPanel = AutoApproveTargetsPanel(config = config)
 
+        allowedOriginsPanel = AllowedOriginsPanel(config = config) {
+            reinstallNotice.isVisible = true
+        }
+
         installationPanel = InstallationPanel(
             config = config, providers = providers, reinstallNotice = reinstallNotice, parentComponent = panel
         )
@@ -96,6 +101,9 @@ class ConfigUi(private val config: McpConfig, private val providers: List<Provid
 
         if (::autoApproveTargetsPanel.isInitialized) {
             autoApproveTargetsPanel.cleanup()
+        }
+        if (::allowedOriginsPanel.isInitialized) {
+            allowedOriginsPanel.cleanup()
         }
     }
 
@@ -198,6 +206,9 @@ class ConfigUi(private val config: McpConfig, private val providers: List<Provid
         rightPanelContent.add(createVerticalStrut(Design.Spacing.LG))
 
         rightPanelContent.add(autoApproveTargetsPanel)
+
+        rightPanelContent.add(createVerticalStrut(Design.Spacing.LG))
+        rightPanelContent.add(allowedOriginsPanel)
 
         rightPanelContent.add(createVerticalStrut(15))
         rightPanelContent.add(advancedOptionsPanel)

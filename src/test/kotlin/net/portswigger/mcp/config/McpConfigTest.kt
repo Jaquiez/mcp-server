@@ -249,4 +249,118 @@ class McpConfigTest {
         assertTrue(config.requireHttpRequestApproval)
         verify { persistedObject.setBoolean("requireHttpRequestApproval", true) }
     }
+
+    @Test
+    fun `addAllowedOriginHost should add new host`() {
+        val result = config.addAllowedOriginHost("host.docker.internal")
+
+        assertTrue(result)
+        assertEquals("host.docker.internal", config.allowedOriginHosts)
+        verify { persistedObject.setString("_allowedOriginHosts", "host.docker.internal") }
+    }
+
+    @Test
+    fun `addAllowedOriginHost should not add duplicate host`() {
+        config.addAllowedOriginHost("host.docker.internal")
+        val result = config.addAllowedOriginHost("host.docker.internal")
+
+        assertFalse(result)
+        assertEquals("host.docker.internal", config.allowedOriginHosts)
+    }
+
+    @Test
+    fun `addAllowedOriginHost should trim whitespace`() {
+        val result = config.addAllowedOriginHost("  host.docker.internal  ")
+
+        assertTrue(result)
+        assertEquals("host.docker.internal", config.allowedOriginHosts)
+    }
+
+    @Test
+    fun `addAllowedOriginHost should not add empty host`() {
+        val result = config.addAllowedOriginHost("   ")
+
+        assertFalse(result)
+        assertEquals("", config.allowedOriginHosts)
+    }
+
+    @Test
+    fun `addAllowedOriginHost should handle multiple hosts`() {
+        config.addAllowedOriginHost("host.docker.internal")
+        config.addAllowedOriginHost("192.168.1.100")
+
+        assertEquals("host.docker.internal,192.168.1.100", config.allowedOriginHosts)
+        assertEquals(listOf("host.docker.internal", "192.168.1.100"), config.getAllowedOriginHostsList())
+    }
+
+    @Test
+    fun `removeAllowedOriginHost should remove existing host`() {
+        config.addAllowedOriginHost("host.docker.internal")
+        config.addAllowedOriginHost("192.168.1.100")
+
+        val result = config.removeAllowedOriginHost("host.docker.internal")
+
+        assertTrue(result)
+        assertEquals("192.168.1.100", config.allowedOriginHosts)
+    }
+
+    @Test
+    fun `removeAllowedOriginHost should return false for non-existing host`() {
+        config.addAllowedOriginHost("host.docker.internal")
+
+        val result = config.removeAllowedOriginHost("notfound.com")
+
+        assertFalse(result)
+        assertEquals("host.docker.internal", config.allowedOriginHosts)
+    }
+
+    @Test
+    fun `clearAllowedOriginHosts should remove all hosts`() {
+        config.addAllowedOriginHost("host.docker.internal")
+        config.addAllowedOriginHost("192.168.1.100")
+
+        config.clearAllowedOriginHosts()
+
+        assertEquals("", config.allowedOriginHosts)
+        assertEquals(emptyList<String>(), config.getAllowedOriginHostsList())
+    }
+
+    @Test
+    fun `getAllowedOriginHostsList should handle empty config`() {
+        assertEquals(emptyList<String>(), config.getAllowedOriginHostsList())
+    }
+
+    @Test
+    fun `allowed origins change listener should be notified`() {
+        var notificationCount = 0
+        val listener = {
+            notificationCount++
+            Unit
+        }
+
+        config.addAllowedOriginsChangeListener(listener)
+        config.addAllowedOriginHost("host.docker.internal")
+
+        assertEquals(1, notificationCount)
+    }
+
+    @Test
+    fun `allowedOriginHosts setter should only notify on actual changes`() {
+        var notificationCount = 0
+        val listener = {
+            notificationCount++
+            Unit
+        }
+
+        config.addAllowedOriginsChangeListener(listener)
+
+        config.allowedOriginHosts = "host.docker.internal"
+        assertEquals(1, notificationCount)
+
+        config.allowedOriginHosts = "host.docker.internal"
+        assertEquals(1, notificationCount)
+
+        config.allowedOriginHosts = "192.168.1.100"
+        assertEquals(2, notificationCount)
+    }
 }

@@ -41,10 +41,17 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
                     )
                 )
 
+                val allowedOriginHosts = buildAllowedHosts(config)
+
                 server = embeddedServer(Netty, port = config.port, host = config.host) {
                     install(CORS) {
                         allowHost("localhost:${config.port}")
                         allowHost("127.0.0.1:${config.port}")
+
+                        for (host in config.getAllowedOriginHostsList()) {
+                            allowHost("$host:${config.port}")
+                            allowHost(host)
+                        }
 
                         allowMethod(HttpMethod.Get)
                         allowMethod(HttpMethod.Post)
@@ -64,7 +71,7 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
                         val referer = call.request.header("Referer")
                         val userAgent = call.request.header("User-Agent")
 
-                        if (origin != null && !isValidOrigin(origin)) {
+                        if (origin != null && !isValidOrigin(origin, allowedOriginHosts)) {
                             api.logging().logToOutput("Blocked DNS rebinding attack from origin: $origin")
                             call.respond(HttpStatusCode.Forbidden)
                             return@intercept
@@ -74,13 +81,13 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
                             return@intercept
                         }
 
-                        if (host != null && !isValidHost(host, config.port)) {
+                        if (host != null && !isValidHost(host, config.port, allowedOriginHosts)) {
                             api.logging().logToOutput("Blocked DNS rebinding attack from host: $host")
                             call.respond(HttpStatusCode.Forbidden)
                             return@intercept
                         }
 
-                        if (referer != null && !isValidReferer(referer)) {
+                        if (referer != null && !isValidReferer(referer, allowedOriginHosts)) {
                             api.logging().logToOutput("Blocked suspicious request from referer: $referer")
                             call.respond(HttpStatusCode.Forbidden)
                             return@intercept
@@ -135,12 +142,16 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
         executor.awaitTermination(10, TimeUnit.SECONDS)
     }
 
-    private fun isValidOrigin(origin: String): Boolean {
+    private fun buildAllowedHosts(config: McpConfig): Set<String> {
+        val hosts = mutableSetOf("localhost", "127.0.0.1")
+        config.getAllowedOriginHostsList().forEach { hosts.add(it.lowercase()) }
+        return hosts
+    }
+
+    private fun isValidOrigin(origin: String, allowedHosts: Set<String>): Boolean {
         try {
             val url = URI(origin).toURL()
             val hostname = url.host.lowercase()
-
-            val allowedHosts = setOf("localhost", "127.0.0.1")
 
             return hostname in allowedHosts
         } catch (_: Exception) {
@@ -159,13 +170,12 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
         return browserIndicators.any { userAgentLower.contains(it) }
     }
 
-    private fun isValidHost(host: String, expectedPort: Int): Boolean {
+    private fun isValidHost(host: String, expectedPort: Int, allowedHosts: Set<String>): Boolean {
         try {
             val parts = host.split(":")
             val hostname = parts[0].lowercase()
             val port = if (parts.size > 1) parts[1].toIntOrNull() else null
 
-            val allowedHosts = setOf("localhost", "127.0.0.1")
             if (hostname !in allowedHosts) {
                 return false
             }
@@ -180,12 +190,11 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
         }
     }
 
-    private fun isValidReferer(referer: String): Boolean {
+    private fun isValidReferer(referer: String, allowedHosts: Set<String>): Boolean {
         try {
             val url = URI(referer).toURL()
             val hostname = url.host.lowercase()
 
-            val allowedHosts = setOf("localhost", "127.0.0.1")
             return hostname in allowedHosts
 
         } catch (_: Exception) {
